@@ -15,23 +15,22 @@
  */
 package org.modeshape.jcr;
 
-import static org.hamcrest.core.Is.is;
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
+import java.util.zip.GZIPInputStream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
+
 import javax.jcr.Binary;
 import javax.jcr.ImportUUIDBehavior;
 import javax.jcr.NoSuchWorkspaceException;
@@ -45,6 +44,9 @@ import javax.jcr.query.QueryResult;
 import javax.transaction.NotSupportedException;
 import javax.transaction.SystemException;
 import javax.transaction.TransactionManager;
+
+import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
 import org.junit.Test;
 import org.modeshape.common.FixFor;
@@ -54,6 +56,9 @@ import org.modeshape.jcr.api.BackupOptions;
 import org.modeshape.jcr.api.JcrTools;
 import org.modeshape.jcr.api.Problems;
 import org.modeshape.jcr.api.RestoreOptions;
+
+import static org.hamcrest.core.Is.is;
+import static org.junit.Assert.*;
 
 /**
  * Tests repository backup and restore
@@ -415,6 +420,22 @@ public class RepositoryBackupAndRestoreTest extends SingleUseAbstractTest {
         assertNoProblems(problems);
 
         verifyBinaryContent();
+    }
+    
+    @Test
+    @FixFor("MODE-2611")
+    public void backupShouldHaveUniqueIDs() throws Exception {
+        loadContent();
+
+        makeBackup(BackupOptions.DEFAULT);
+        File backup = backupDirectory.listFiles((dir, name) -> name.contains("documents"))[0];
+        try (GZIPInputStream gzipInputStream = new GZIPInputStream(new FileInputStream(backup))) {
+            String fileContent = IOUtils.toString(gzipInputStream);
+            String lines[] = fileContent.split("\\r?\\n");
+            List<String> idList = Arrays.stream(lines).map(s -> StringUtils.substringBetween(s, "\"id\" : \"", "\" }")).collect(Collectors.toList());
+            Set<String> idSet = new HashSet<>(idList);
+            assertEquals(idList.size(), idSet.size());
+        }
     }
 
     private File extractZip( String zipFile, File destination ) throws IOException {
